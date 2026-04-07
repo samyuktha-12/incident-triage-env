@@ -12,6 +12,7 @@ except ImportError:
         from server.scenarios import ALL_SCENARIOS
 
 from openenv.core.env_server import Environment
+from openenv.core.env_server.types import State as _State
 
 
 class IncidentTriageEnvironment(Environment):
@@ -139,8 +140,11 @@ class IncidentTriageEnvironment(Environment):
         return round(score, 2), feedback
 
     @property
-    def state(self) -> IncidentState:
-        return self._state
+    def state(self) -> _State:
+        # Return a State instance with all IncidentState fields set as extras.
+        # State has extra="allow" so they survive serialization; returning the
+        # subclass directly gets filtered to base fields by FastAPI's response model.
+        return _State(**self._state.model_dump())
 
     def _make_obs(self, scenario: dict, task: str, step: int, reward: float, done: bool, feedback: str) -> IncidentObservation:
         return IncidentObservation(
