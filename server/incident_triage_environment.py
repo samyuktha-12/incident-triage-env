@@ -1,3 +1,5 @@
+import uuid
+
 try:
     from ..models import IncidentAction, IncidentObservation, IncidentState
     from .scenarios import ALL_SCENARIOS
@@ -16,18 +18,35 @@ class IncidentTriageEnvironment(Environment):
     """
     SRE Incident Triage Environment.
 
-    Stateless HTTP design: each reset() and step() call is fully self-contained.
-    task and scenario_id are passed explicitly so no server-side session state is needed.
-    Reward is shaped across 4 components per incident (root_cause, severity, remediation, summary).
+    Uses a singleton shared instance (see server/app.py) so that state is
+    preserved across reset(), step(), and state property calls despite the
+    openenv framework creating a new env reference per request.
+
+    reset() and step() accept task/scenario_id as kwargs so they remain
+    correct even when called on a fresh instance (stateless fallback).
+    Reward is shaped across 4 components per incident.
     """
 
     def __init__(self, task_name: str = "easy"):
         super().__init__()
         self.task_name = task_name
+        self._state = IncidentState()
+
+    def close(self) -> None:
+        """No-op: prevents the framework from destroying the shared singleton."""
+        pass
 
     def reset(self, task: str = "easy", **kwargs) -> IncidentObservation:
         scenarios = ALL_SCENARIOS.get(task, ALL_SCENARIOS["easy"])
         scenario = scenarios[0]
+        self._state = IncidentState(
+            episode_id=str(uuid.uuid4()),
+            task_name=task,
+            scenario_id=scenario["id"],
+            step_count=0,
+            total_reward=0.0,
+            solved=False,
+        )
         return self._make_obs(
             scenario, task=task, step=0, reward=0.0, done=False,
             feedback="Incident detected. Begin triage.",
@@ -40,14 +59,23 @@ class IncidentTriageEnvironment(Environment):
 
         reward, feedback = self._grade(action, current)
 
+        self._state.step_count += 1
+        self._state.total_reward = round(self._state.total_reward + reward, 2)
+        self._state.task_name = task
+
         next_idx = idx + 1
         done = next_idx >= len(scenarios)
 
         if not done:
+            next_scenario = scenarios[next_idx]
+            self._state.scenario_id = next_scenario["id"]
             return self._make_obs(
-                scenarios[next_idx], task=task, step=idx + 1,
+                next_scenario, task=task, step=idx + 1,
                 reward=reward, done=False, feedback=feedback,
             )
+
+        self._state.scenario_id = scenario_id
+        self._state.solved = reward >= 0.7
         return IncidentObservation(
             step=idx + 1,
             task_name=task,
@@ -112,7 +140,7 @@ class IncidentTriageEnvironment(Environment):
 
     @property
     def state(self) -> IncidentState:
-        return IncidentState()
+        return self._state
 
     def _make_obs(self, scenario: dict, task: str, step: int, reward: float, done: bool, feedback: str) -> IncidentObservation:
         return IncidentObservation(

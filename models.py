@@ -1,6 +1,11 @@
 from pydantic import BaseModel
 from typing import Literal, List, Dict
 
+try:
+    from openenv.core.env_server.types import State as _OpenEnvState
+except ImportError:
+    _OpenEnvState = BaseModel
+
 
 class IncidentAction(BaseModel):
     """Action taken by the agent during an incident triage step."""
@@ -33,8 +38,8 @@ class IncidentObservation(BaseModel):
     feedback: str
 
 
-class IncidentState(BaseModel):
-    """Internal episode state."""
+class IncidentState(_OpenEnvState):
+    """Internal episode state. Extends openenv State so all fields are serialized by /state."""
     episode_id: str = ""
     step_count: int = 0
     task_name: str = ""

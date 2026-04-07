@@ -11,8 +11,13 @@ except ImportError:
 
 from openenv.core.env_server import create_app
 
+# Single shared instance — the framework calls env_factory() on every request
+# and close() in a finally block. close() is overridden as a no-op so this
+# singleton survives across reset/step/state calls and state is preserved.
+_shared_env = IncidentTriageEnvironment()
+
 app = create_app(
-    IncidentTriageEnvironment,
+    lambda: _shared_env,
     IncidentAction,
     IncidentObservation,
     env_name="incident_triage_env",
