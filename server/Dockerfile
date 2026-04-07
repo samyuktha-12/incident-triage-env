@@ -9,9 +9,9 @@ RUN pip install uv
 COPY pyproject.toml .
 COPY . .
 
-RUN uv pip install --system -e .
+RUN uv pip install --system openenv-core fastapi "uvicorn[standard]" "pydantic>=2.0" "openai>=1.0"
 
-ENV PYTHONPATH="/app/env:$PYTHONPATH"
+ENV PYTHONPATH="/app/env"
 
 EXPOSE 8000
 
