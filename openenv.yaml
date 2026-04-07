@@ -1,0 +1,25 @@
+spec_version: 1
+name: incident_triage_env
+type: text
+runtime: docker
+app: server.app:app
+port: 8000
+description: >
+  SRE Incident Triage Environment — an RL environment where an agent must
+  identify root cause, severity, and remediation for production incidents
+  given correlated alerts, logs, and service dependency context.
+tags:
+  - openenv
+  - real-world
+  - sre
+  - incident-management
+tasks:
+  - name: easy
+    description: "Single-service failures with clear log trails. No cascading. 3 scenarios."
+    difficulty: easy
+  - name: medium
+    description: "Cascading failures across 2-3 services with recent deployments as signals. 3 scenarios."
+    difficulty: medium
+  - name: hard
+    description: "Full outages, silent pipeline failures, tenant-specific bugs with minimal signal. 3 scenarios."
+    difficulty: hard
