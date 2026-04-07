@@ -4,8 +4,12 @@ try:
     from ..models import IncidentAction, IncidentObservation, IncidentState
     from .scenarios import ALL_SCENARIOS
 except ImportError:
-    from models import IncidentAction, IncidentObservation, IncidentState
-    from scenarios import ALL_SCENARIOS
+    try:
+        from models import IncidentAction, IncidentObservation, IncidentState
+        from scenarios import ALL_SCENARIOS
+    except ImportError:
+        from models import IncidentAction, IncidentObservation, IncidentState
+        from server.scenarios import ALL_SCENARIOS
 
 from openenv.core.env_server import Environment
 
