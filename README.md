@@ -1,3 +1,17 @@
+---
+title: Incident Triage Environment
+emoji: 🚨
+colorFrom: red
+colorTo: blue
+sdk: docker
+app_port: 8000
+tags:
+  - openenv
+  - real-world
+  - sre
+  - incident-management
+---
+
 # Incident Triage Environment
 
 ## Overview & Motivation
