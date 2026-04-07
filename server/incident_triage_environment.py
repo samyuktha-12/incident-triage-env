@@ -55,6 +55,12 @@ class IncidentTriageEnvironment(Environment):
 
     def step(self, action: IncidentAction, task: str = "easy", scenario_id: str = "", **kwargs) -> IncidentObservation:
         scenarios = ALL_SCENARIOS.get(task, ALL_SCENARIOS["easy"])
+
+        # If caller didn't provide scenario_id, fall back to singleton state.
+        # Explicit scenario_id (e.g. from inference.py) is always respected as-is.
+        if not scenario_id and self._state.task_name == task and self._state.scenario_id:
+            scenario_id = self._state.scenario_id
+
         idx = next((i for i, s in enumerate(scenarios) if s["id"] == scenario_id), 0)
         current = scenarios[idx]
 
