@@ -1,5 +1,3 @@
-import uuid
-
 try:
     from ..models import IncidentAction, IncidentObservation, IncidentState
     from .scenarios import ALL_SCENARIOS
@@ -18,50 +16,54 @@ class IncidentTriageEnvironment(Environment):
     """
     SRE Incident Triage Environment.
 
-    Each episode runs through all scenarios for the selected task (easy/medium/hard).
-    One action per scenario — the episode ends when all scenarios are exhausted.
+    Stateless HTTP design: each reset() and step() call is fully self-contained.
+    task and scenario_id are passed explicitly so no server-side session state is needed.
     Reward is shaped across 4 components per incident (root_cause, severity, remediation, summary).
     """
 
     def __init__(self, task_name: str = "easy"):
         super().__init__()
         self.task_name = task_name
-        self._state = IncidentState()
-        self._scenarios = []
-        self._current_scenario = None
-        self._scenario_index = 0
 
-    def reset(self, **kwargs) -> IncidentObservation:
-        task = kwargs.get("task", self.task_name)
-        self.task_name = task
-        self._scenarios = list(ALL_SCENARIOS[task])
-        self._scenario_index = 0
-        self._current_scenario = self._scenarios[self._scenario_index]
-        self._state = IncidentState(
-            episode_id=str(uuid.uuid4()),
-            task_name=task,
-            scenario_id=self._current_scenario["id"],
+    def reset(self, task: str = "easy", **kwargs) -> IncidentObservation:
+        scenarios = ALL_SCENARIOS.get(task, ALL_SCENARIOS["easy"])
+        scenario = scenarios[0]
+        return self._make_obs(
+            scenario, task=task, step=0, reward=0.0, done=False,
+            feedback="Incident detected. Begin triage.",
         )
-        return self._make_observation(reward=0.0, done=False, feedback="Incident detected. Begin triage.")
 
-    def step(self, action: IncidentAction) -> IncidentObservation:
-        self._state.step_count += 1
-        reward, feedback = self._grade(action)
-        self._state.total_reward += reward
+    def step(self, action: IncidentAction, task: str = "easy", scenario_id: str = "", **kwargs) -> IncidentObservation:
+        scenarios = ALL_SCENARIOS.get(task, ALL_SCENARIOS["easy"])
+        idx = next((i for i, s in enumerate(scenarios) if s["id"] == scenario_id), 0)
+        current = scenarios[idx]
 
-        self._scenario_index += 1
-        done = self._scenario_index >= len(self._scenarios)
+        reward, feedback = self._grade(action, current)
+
+        next_idx = idx + 1
+        done = next_idx >= len(scenarios)
 
         if not done:
-            self._current_scenario = self._scenarios[self._scenario_index]
-            self._state.scenario_id = self._current_scenario["id"]
-        else:
-            self._state.solved = reward >= 0.7
+            return self._make_obs(
+                scenarios[next_idx], task=task, step=idx + 1,
+                reward=reward, done=False, feedback=feedback,
+            )
+        return IncidentObservation(
+            step=idx + 1,
+            task_name=task,
+            scenario_id=scenario_id,
+            alerts=[],
+            log_snippets=[],
+            dependency_graph={},
+            recent_deployments=[],
+            task_description="Episode complete.",
+            reward=reward,
+            done=True,
+            feedback=feedback,
+        )
 
-        return self._make_observation(reward=reward, done=done, feedback=feedback)
-
-    def _grade(self, action: IncidentAction) -> tuple:
-        gt = self._current_scenario["ground_truth"]
+    def _grade(self, action: IncidentAction, scenario: dict) -> tuple:
+        gt = scenario["ground_truth"]
         score = 0.0
         parts = []
 
@@ -110,17 +112,18 @@ class IncidentTriageEnvironment(Environment):
 
     @property
     def state(self) -> IncidentState:
-        return self._state
+        return IncidentState()
 
-    def _make_observation(self, reward: float, done: bool, feedback: str) -> IncidentObservation:
-        s = self._current_scenario if self._current_scenario else {}
+    def _make_obs(self, scenario: dict, task: str, step: int, reward: float, done: bool, feedback: str) -> IncidentObservation:
         return IncidentObservation(
-            step=self._state.step_count,
-            alerts=s.get("alerts", []),
-            log_snippets=s.get("log_snippets", []),
-            dependency_graph=s.get("dependency_graph", {}),
-            recent_deployments=s.get("recent_deployments", []),
-            task_description=s.get("task_description", ""),
+            step=step,
+            task_name=task,
+            scenario_id=scenario["id"],
+            alerts=scenario.get("alerts", []),
+            log_snippets=scenario.get("log_snippets", []),
+            dependency_graph=scenario.get("dependency_graph", {}),
+            recent_deployments=scenario.get("recent_deployments", []),
+            task_description=scenario.get("task_description", ""),
             reward=reward,
             done=done,
             feedback=feedback,

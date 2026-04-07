@@ -45,6 +45,53 @@ def format_obs(obs: dict) -> str:
     )
 
 
+VALID_REMEDIATIONS = {
+    "rollback_deployment", "scale_out", "restart_service",
+    "escalate_to_engineer", "snooze_alert", "flush_cache", "failover_db",
+}
+REMEDIATION_MAP = {
+    "rollback":            "rollback_deployment",
+    "roll_back":           "rollback_deployment",
+    "scale":               "scale_out",
+    "scale_up":            "scale_out",
+    "restart":             "restart_service",
+    "reboot":              "restart_service",
+    "escalate":            "escalate_to_engineer",
+    "escalate_engineer":   "escalate_to_engineer",
+    "snooze":              "snooze_alert",
+    "flush":               "flush_cache",
+    "clear_cache":         "flush_cache",
+    "failover":            "failover_db",
+    "fail_over":           "failover_db",
+    "failover_database":   "failover_db",
+}
+
+
+def normalize_action(action: dict) -> dict:
+    # Severity: accept p1/p2/p3 or any string starting with P/p + digit
+    sev = str(action.get("severity", "")).strip().upper()
+    if sev not in ("P1", "P2", "P3"):
+        for candidate in ("P1", "P2", "P3"):
+            if candidate in sev:
+                sev = candidate
+                break
+        else:
+            sev = "P2"  # safe default
+    action["severity"] = sev
+
+    # Remediation: exact match first, then fuzzy
+    rem = str(action.get("remediation", "")).strip().lower().replace(" ", "_").replace("-", "_")
+    if rem not in VALID_REMEDIATIONS:
+        rem = REMEDIATION_MAP.get(rem, "restart_service")
+    action["remediation"] = rem
+
+    # Summary: enforce 10–120 char limit
+    summary = str(action.get("summary", "")).strip()[:120]
+    action["summary"] = summary if len(summary) >= 10 else (summary + " (incident)").strip()[:120]
+
+    return action
+
+
 def get_action(obs: dict) -> dict:
     resp = client.chat.completions.create(
         model=MODEL_NAME,
@@ -60,18 +107,22 @@ def get_action(obs: dict) -> dict:
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
-    return json.loads(raw.strip())
+    return normalize_action(json.loads(raw.strip()))
 
 
 def call_env(method: str, payload: dict = None) -> dict:
-    import urllib.request
+    import urllib.request, urllib.error
     data = json.dumps(payload or {}).encode()
     req  = urllib.request.Request(
         f"{ENV_URL}/{method}", data=data,
         headers={"Content-Type": "application/json"}, method="POST",
     )
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")[:300]
+        raise RuntimeError(f"HTTP {e.code} from /{method}: {body}") from None
 
 
 def run_task(task_name: str):
@@ -91,10 +142,14 @@ def run_task(task_name: str):
             try:
                 action_dict = get_action(obs)
                 action_str  = json.dumps(action_dict, separators=(",", ":"))
-                result      = call_env("step", action_dict)
+                result      = call_env("step", {
+                    "action":      action_dict,
+                    "task":        obs.get("task_name", task_name),
+                    "scenario_id": obs.get("scenario_id", ""),
+                })
                 obs         = result.get("observation", result)
-                reward      = float(obs.get("reward", 0.0))
-                done        = bool(obs.get("done", False))
+                reward      = float(result["reward"] if result.get("reward") is not None else obs.get("reward", 0.0))
+                done        = bool(result.get("done", obs.get("done", False)))
                 error_msg   = "null"
             except Exception as e:
                 reward    = 0.0

@@ -21,6 +21,8 @@ class IncidentAction(BaseModel):
 class IncidentObservation(BaseModel):
     """What the agent observes at each step."""
     step: int
+    task_name: str = ""
+    scenario_id: str = ""
     alerts: List[Dict]
     log_snippets: List[str]
     dependency_graph: Dict
