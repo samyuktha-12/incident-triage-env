@@ -20,7 +20,7 @@ if HF_TOKEN is None:
 
 client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
-TASKS    = ["easy", "medium", "hard"]
+TASKS    = ["easy", "medium", "hard", "chaos"]
 ENV_NAME = "incident_triage_env"
 
 SYSTEM_PROMPT = """You are an expert SRE (Site Reliability Engineer) agent.

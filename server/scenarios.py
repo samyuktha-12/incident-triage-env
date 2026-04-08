@@ -305,8 +305,114 @@ HARD_SCENARIOS = [
     },
 ]
 
+CHAOS_SCENARIOS = [
+    {
+        "id": "chaos_1",
+        "task_description": "Two independent failures detected simultaneously. Identify the highest priority root cause — the one with most revenue impact.",
+        "alerts": [
+            {"service": "payments-service", "metric": "error_rate", "value": "45%", "threshold": "1%", "firing_for": "5m"},
+            {"service": "payments-service", "metric": "latency_p99", "value": "8000ms", "threshold": "500ms", "firing_for": "5m"},
+            {"service": "recommendation-service", "metric": "error_rate", "value": "95%", "threshold": "1%", "firing_for": "3m"},
+            {"service": "recommendation-service", "metric": "pod_restarts", "value": "20", "threshold": "3", "firing_for": "3m"},
+            {"service": "postgres-primary", "metric": "connection_pool_usage", "value": "88%", "threshold": "70%", "firing_for": "6m"},
+        ],
+        "log_snippets": [
+            "[payments-service] ERROR: Slow query timeout after 7500ms on postgres-primary",
+            "[payments-service] WARN: Connection pool 88% utilized, 12 queued",
+            "[recommendation-service] FATAL: ImportError: cannot import name 'ModelV3' from 'ml_lib'",
+            "[recommendation-service] ERROR: CrashLoopBackOff — pod restarting every 30s",
+            "[postgres-primary] WARN: 180 active connections (limit: 200)",
+        ],
+        "dependency_graph": {
+            "api-gateway": ["payments-service", "recommendation-service", "auth-service"],
+            "payments-service": ["postgres-primary", "redis-cache"],
+            "recommendation-service": ["feature-store", "redis-cache"],
+            "auth-service": ["postgres-primary"],
+        },
+        "recent_deployments": [
+            {"service": "recommendation-service", "version": "v3.0.0", "deployed_at": "4 minutes ago", "note": "Major ML model upgrade"},
+        ],
+        "ground_truth": {
+            "root_cause": "postgres-primary",
+            "severity": "P1",
+            "remediation": "scale_out",
+        },
+    },
+    {
+        "id": "chaos_2",
+        "task_description": "Multiple simultaneous failures across unrelated systems. Triage the highest priority incident first.",
+        "alerts": [
+            {"service": "auth-service", "metric": "error_rate", "value": "30%", "threshold": "1%", "firing_for": "8m"},
+            {"service": "cdn-edge", "metric": "cache_hit_rate", "value": "3%", "threshold": "85%", "firing_for": "25m"},
+            {"service": "redis-cache", "metric": "memory_usage", "value": "98%", "threshold": "80%", "firing_for": "10m"},
+            {"service": "etl-pipeline", "metric": "job_duration_minutes", "value": "120", "threshold": "45", "firing_for": "2h"},
+            {"service": "notification-service", "metric": "queue_depth", "value": "45000", "threshold": "1000", "firing_for": "15m"},
+        ],
+        "log_snippets": [
+            "[auth-service] ERROR: redis.exceptions.ConnectionError: Cannot connect to redis-cache",
+            "[auth-service] WARN: Falling back to postgres for session lookup — 800ms latency",
+            "[redis-cache] FATAL: OOM — evicting keys but memory still at 98%",
+            "[notification-service] WARN: Consumer lag growing — redis pub/sub unavailable",
+            "[cdn-edge] WARN: Cache-Control headers forcing bypass on all /api/v2/* routes",
+            "[etl-pipeline] INFO: Waiting on table lock held for 2h — no error thrown",
+        ],
+        "dependency_graph": {
+            "api-gateway": ["auth-service", "notification-service", "cdn-edge"],
+            "auth-service": ["redis-cache", "postgres-primary"],
+            "notification-service": ["redis-cache", "kafka-cluster"],
+            "cdn-edge": ["api-gateway"],
+            "etl-pipeline": ["postgres-warehouse", "kafka-cluster"],
+        },
+        "recent_deployments": [
+            {"service": "cdn-edge", "version": "v2.1.0", "deployed_at": "30 minutes ago", "note": "Cache policy update"},
+            {"service": "etl-pipeline", "version": "v1.5.0", "deployed_at": "3 hours ago", "note": "Batch size increase"},
+        ],
+        "ground_truth": {
+            "root_cause": "redis-cache",
+            "severity": "P1",
+            "remediation": "restart_service",
+        },
+    },
+    {
+        "id": "chaos_3",
+        "task_description": "Storm of alerts across 6 services. Two root causes present. Identify the one causing active revenue loss.",
+        "alerts": [
+            {"service": "payments-service", "metric": "transaction_success_rate", "value": "12%", "threshold": "99%", "firing_for": "3m"},
+            {"service": "api-gateway", "metric": "error_rate", "value": "55%", "threshold": "1%", "firing_for": "3m"},
+            {"service": "search-service", "metric": "memory_usage", "value": "96%", "threshold": "85%", "firing_for": "20m"},
+            {"service": "postgres-primary", "metric": "replication_lag_seconds", "value": "120", "threshold": "5", "firing_for": "4m"},
+            {"service": "payments-service", "metric": "duplicate_transactions", "value": "847", "threshold": "0", "firing_for": "3m"},
+            {"service": "license-server", "metric": "response_time_ms", "value": "15000", "threshold": "200", "firing_for": "5m"},
+        ],
+        "log_snippets": [
+            "[payments-service] ERROR: Idempotency check failed — stale read from postgres-replica",
+            "[payments-service] ERROR: Duplicate charge detected for order_id 847 transactions",
+            "[api-gateway] ERROR: Upstream payments-service timeout after 5000ms",
+            "[postgres-primary] WARN: Replica lag 120s — reads routing to stale replica",
+            "[search-service] WARN: GC pause 3200ms — heap at 96%",
+            "[license-server] WARN: Upstream vendor API rate limiting: 429 on 80% of requests",
+        ],
+        "dependency_graph": {
+            "api-gateway": ["payments-service", "search-service", "auth-service"],
+            "payments-service": ["postgres-primary", "postgres-replica", "license-server"],
+            "search-service": ["elasticsearch", "redis-cache"],
+            "postgres-replica": ["postgres-primary"],
+        },
+        "recent_deployments": [
+            {"service": "payments-service", "version": "v3.2.0", "deployed_at": "5 minutes ago", "note": "Enabled read replica for payments reads"},
+            {"service": "search-service", "version": "v4.1.0", "deployed_at": "2 hours ago", "note": "Index size increase"},
+        ],
+        "ground_truth": {
+            "root_cause": "postgres-replica",
+            "severity": "P1",
+            "remediation": "failover_db",
+        },
+    },
+]
+
 ALL_SCENARIOS = {
     "easy": EASY_SCENARIOS,
     "medium": MEDIUM_SCENARIOS,
     "hard": HARD_SCENARIOS,
+    "chaos": CHAOS_SCENARIOS,
 }

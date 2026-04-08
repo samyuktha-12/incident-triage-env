@@ -38,6 +38,8 @@ class IncidentTriageEnvironment(Environment):
         pass
 
     def reset(self, task: str = "easy", **kwargs) -> IncidentObservation:
+        if task not in ALL_SCENARIOS:
+            task = "easy"
         scenarios = ALL_SCENARIOS.get(task, ALL_SCENARIOS["easy"])
         scenario = scenarios[0]
         self._state = IncidentState(
@@ -49,7 +51,7 @@ class IncidentTriageEnvironment(Environment):
             solved=False,
         )
         return self._make_obs(
-            scenario, task=task, step=0, reward=0.01, done=False,
+            scenario, task=task, step=0, reward=0.05, done=False,
             feedback="Incident detected. Begin triage.",
         )
 
@@ -142,9 +144,9 @@ class IncidentTriageEnvironment(Environment):
         else:
             parts.append("summary missing or invalid (+0.0)")
 
-        score = max(0.01, min(0.99, score))
+        score = round(max(0.02, min(0.97, score)), 2)
         feedback = f"Score: {score:.2f} | " + " | ".join(parts)
-        return round(score, 2), feedback
+        return score, feedback
 
     @property
     def state(self) -> _State:
@@ -154,6 +156,7 @@ class IncidentTriageEnvironment(Environment):
         return _State(**self._state.model_dump())
 
     def _make_obs(self, scenario: dict, task: str, step: int, reward: float, done: bool, feedback: str) -> IncidentObservation:
+        reward = round(max(0.02, min(0.97, float(reward))), 2)
         return IncidentObservation(
             step=step,
             task_name=task,

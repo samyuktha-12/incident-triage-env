@@ -23,3 +23,6 @@ tasks:
   - name: hard
     description: "Full outages, silent pipeline failures, tenant-specific bugs with minimal signal. 3 scenarios."
     difficulty: hard
+  - name: chaos
+    description: "Two simultaneous independent failures — agent must identify highest priority root cause. 3 scenarios."
+    difficulty: chaos

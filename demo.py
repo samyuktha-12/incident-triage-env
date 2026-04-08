@@ -75,6 +75,26 @@ PERFECT_ACTIONS = {
             "summary": "license-server rate limited causing enterprise 503s",
         },
     ],
+    "chaos": [
+        {
+            "root_cause": "postgres-primary",
+            "severity": "P1",
+            "remediation": "scale_out",
+            "summary": "postgres-primary connection pool causing payment slowdown amid recommendation crash",
+        },
+        {
+            "root_cause": "redis-cache",
+            "severity": "P1",
+            "remediation": "restart_service",
+            "summary": "redis-cache OOM causing auth failures and notification backlog",
+        },
+        {
+            "root_cause": "postgres-replica",
+            "severity": "P1",
+            "remediation": "failover_db",
+            "summary": "postgres-replica lag causing duplicate payment transactions",
+        },
+    ],
 }
 
 DIVIDER = "━" * 40
@@ -143,7 +163,7 @@ def main():
     print(f"Connecting to environment at {ENV_URL}\n")
 
     results = {}
-    for task in ["easy", "medium", "hard"]:
+    for task in ["easy", "medium", "hard", "chaos"]:
         print(f"\n{'=' * 40}")
         print(f"Running task: {task.upper()}")
         print(f"{'=' * 40}")

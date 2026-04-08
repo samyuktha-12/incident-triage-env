@@ -9,7 +9,19 @@ except ImportError:
         from models import IncidentAction, IncidentObservation
         from server.incident_triage_environment import IncidentTriageEnvironment
 
+import logging
 from openenv.core.env_server import create_app
+
+try:
+    from .scenarios import ALL_SCENARIOS
+except ImportError:
+    try:
+        from scenarios import ALL_SCENARIOS
+    except ImportError:
+        from server.scenarios import ALL_SCENARIOS
+
+logging.basicConfig(level=logging.INFO)
+logging.info(f"[incident_triage_env] ALL_SCENARIOS keys: {list(ALL_SCENARIOS.keys())}")
 
 # Single shared instance — the framework calls env_factory() on every request
 # and close() in a finally block. close() is overridden as a no-op so this
