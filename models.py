@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Literal, List, Dict
 
 try:
@@ -36,6 +36,11 @@ class IncidentObservation(BaseModel):
     reward: float
     done: bool
     feedback: str
+
+    @field_validator('reward')
+    @classmethod
+    def reward_must_be_open_interval(cls, v):
+        return round(max(0.01, min(0.99, float(v))), 2)
 
 
 class IncidentState(_OpenEnvState):

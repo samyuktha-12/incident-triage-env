@@ -85,6 +85,7 @@ class IncidentTriageEnvironment(Environment):
 
         self._state.scenario_id = scenario_id
         self._state.solved = reward >= 0.7
+        reward = round(max(0.01, min(0.99, float(reward))), 2)
         return IncidentObservation(
             step=idx + 1,
             task_name=task,
@@ -144,7 +145,7 @@ class IncidentTriageEnvironment(Environment):
         else:
             parts.append("summary missing or invalid (+0.0)")
 
-        score = round(max(0.02, min(0.97, score)), 2)
+        score = round(max(0.01, min(0.99, score)), 2)
         feedback = f"Score: {score:.2f} | " + " | ".join(parts)
         return score, feedback
 
@@ -156,7 +157,7 @@ class IncidentTriageEnvironment(Environment):
         return _State(**self._state.model_dump())
 
     def _make_obs(self, scenario: dict, task: str, step: int, reward: float, done: bool, feedback: str) -> IncidentObservation:
-        reward = round(max(0.02, min(0.97, float(reward))), 2)
+        reward = round(max(0.01, min(0.99, float(reward))), 2)
         return IncidentObservation(
             step=step,
             task_name=task,
