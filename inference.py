@@ -176,8 +176,10 @@ def run_task(task_name: str):
 
     rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.01"
     success     = any(r >= 0.5 for r in rewards)
+    score       = round(sum(rewards) / len(rewards), 3) if rewards else 0.01
+    score       = min(max(score, 0.01), 0.99)
     print(
-        f"[END] success={str(success).lower()} steps={step_n} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={step_n} score={score:.3f} rewards={rewards_str}",
         flush=True,
     )
 
@@ -187,6 +189,6 @@ if __name__ == "__main__":
         try:
             run_task(task)
         except Exception as e:
-            print(f"[END] success=false steps=0 rewards=0.01", flush=True)
+            print(f"[END] success=false steps=0 score=0.01 rewards=0.01", flush=True)
             print(f"FATAL: {e}", file=sys.stderr)
         time.sleep(1)
