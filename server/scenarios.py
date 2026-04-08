@@ -80,27 +80,33 @@ EASY_SCENARIOS = [
 MEDIUM_SCENARIOS = [
     {
         "id": "medium_1",
-        "task_description": "Multiple services are degraded. Cascading failure — find the origin service.",
+        # Root cause: redis-cache / P1 / restart_service
+        # Red herring: user-service deployed 45m ago looks suspicious
+        # Victims: api-gateway, auth-service, user-service all alert; redis-cache evidence comes last
+        "task_description": "Multiple services degraded simultaneously. Identify the shared dependency causing the cascade.",
         "alerts": [
-            {"service": "api-gateway", "metric": "latency_p99", "value": "8000ms", "threshold": "200ms", "firing_for": "10m"},
-            {"service": "auth-service", "metric": "error_rate", "value": "30%", "threshold": "1%", "firing_for": "10m"},
-            {"service": "user-service", "metric": "error_rate", "value": "25%", "threshold": "1%", "firing_for": "9m"},
-            {"service": "redis-cache", "metric": "connection_refused", "value": "true", "threshold": "false", "firing_for": "11m"},
+            {"service": "api-gateway", "metric": "latency_p99", "value": "7800ms", "threshold": "200ms", "firing_for": "10m"},
+            {"service": "auth-service", "metric": "error_rate", "value": "28%", "threshold": "1%", "firing_for": "10m"},
+            {"service": "user-service", "metric": "error_rate", "value": "22%", "threshold": "1%", "firing_for": "9m"},
+            {"service": "session-service", "metric": "timeout_rate", "value": "35%", "threshold": "2%", "firing_for": "9m"},
+            {"service": "redis-cache", "metric": "used_memory_percent", "value": "99%", "threshold": "80%", "firing_for": "12m"},
         ],
         "log_snippets": [
-            "[auth-service] ERROR: redis.exceptions.ConnectionError: Connection refused 127.0.0.1:6379",
-            "[user-service] ERROR: Cache miss fallback failed: redis.exceptions.ConnectionError",
-            "[api-gateway] WARN: Upstream timeout from auth-service after 5000ms",
-            "[redis-cache] FATAL: OOM command not allowed when used memory > maxmemory",
+            "[auth-service] ERROR: Session lookup failed — connection pool exhausted after 5000ms",
+            "[user-service] ERROR: Cache read timed out — falling back to DB, latency spike observed",
+            "[session-service] ERROR: Write to session store failed — operation timed out after 4800ms",
+            "[api-gateway] WARN: auth-service and user-service both exceeding SLA — upstream degraded",
+            "[redis-cache] WARN: Eviction rate spiking — maxmemory policy active, keys being dropped under load",
         ],
         "dependency_graph": {
             "api-gateway": ["auth-service", "user-service", "payments-service"],
             "auth-service": ["redis-cache", "postgres-primary"],
             "user-service": ["redis-cache", "postgres-replica"],
+            "session-service": ["redis-cache"],
             "payments-service": ["postgres-primary"],
         },
         "recent_deployments": [
-            {"service": "user-service", "version": "v1.9.0", "deployed_at": "2 hours ago", "deployed_by": "ci-pipeline"},
+            {"service": "user-service", "version": "v1.9.0", "deployed_at": "45 minutes ago", "note": "Enabled aggressive read-through caching — cache hit rate expected to increase"},
         ],
         "ground_truth": {
             "root_cause": "redis-cache",
@@ -109,25 +115,33 @@ MEDIUM_SCENARIOS = [
         },
     },
     {
+        # Root cause: postgres-replica / P1 / failover_db
+        # Red herring: payments-gateway deployed 45m ago looks like the culprit for duplicate charges
+        # Victims: payments-service and stripe-api alert; all logs are application-layer only
+        # LLM must infer replica divergence from write-then-read inconsistency patterns alone
         "id": "medium_2",
-        "task_description": "Intermittent payment failures. Some requests succeed. Identify root cause.",
+        "task_description": "Intermittent payment failures with duplicate charge complaints. Some transactions succeed. Identify root cause.",
         "alerts": [
-            {"service": "payments-service", "metric": "error_rate", "value": "15%", "threshold": "1%", "firing_for": "20m"},
-            {"service": "payments-gateway", "metric": "timeout_rate", "value": "12%", "threshold": "0.5%", "firing_for": "20m"},
-            {"service": "postgres-primary", "metric": "replication_lag_seconds", "value": "45", "threshold": "5", "firing_for": "25m"},
+            {"service": "payments-service", "metric": "error_rate", "value": "16%", "threshold": "1%", "firing_for": "25m"},
+            {"service": "payments-service", "metric": "duplicate_transaction_rate", "value": "4.2%", "threshold": "0.01%", "firing_for": "24m"},
+            {"service": "stripe-api", "metric": "idempotency_conflict_rate", "value": "3.8%", "threshold": "0.1%", "firing_for": "22m"},
+            {"service": "order-service", "metric": "fulfillment_error_rate", "value": "6%", "threshold": "0.5%", "firing_for": "20m"},
         ],
         "log_snippets": [
-            "[payments-service] ERROR: Read your writes consistency violated — stale data from replica",
-            "[payments-service] ERROR: Duplicate transaction detected, idempotency key collision",
-            "[postgres-replica] WARN: Replication lag: 45 seconds behind primary",
-            "[payments-service] INFO: Routing 30% reads to replica (read-replica strategy active)",
+            "[payments-service] ERROR: Charge attempt for txn_id=8842f rejected — payment already exists, but pre-check returned no record",
+            "[order-service] ERROR: Order ORD-19920 marked unfulfilled — inventory showed 3 units available at time of purchase, now shows 0",
+            "[payments-service] WARN: Balance read immediately after write returned stale value — retrying with strong consistency flag",
+            "[payments-service] ERROR: Idempotency key txn_id=9021a already processed according to stripe-api, but local state shows pending",
+            "[payments-service] WARN: Read path returning inconsistent state on 4% of requests — writes confirmed on primary but reads diverging",
         ],
         "dependency_graph": {
             "payments-service": ["postgres-primary", "postgres-replica", "payments-gateway"],
+            "order-service": ["postgres-replica", "inventory-service"],
+            "inventory-service": ["postgres-replica"],
             "payments-gateway": ["stripe-api"],
         },
         "recent_deployments": [
-            {"service": "payments-service", "version": "v3.1.0", "deployed_at": "3 hours ago", "note": "Enabled read replica routing"},
+            {"service": "payments-gateway", "version": "v2.4.0", "deployed_at": "45 minutes ago", "note": "Updated idempotency key generation — switched from UUID v4 to UUID v7 for ordering guarantees"},
         ],
         "ground_truth": {
             "root_cause": "postgres-replica",
@@ -136,25 +150,35 @@ MEDIUM_SCENARIOS = [
         },
     },
     {
+        # Root cause: api-gateway / P2 / rollback_deployment
+        # Red herrings: cdn-edge config update (looks like misconfigured TTL) and auth-service deploy
+        # LLM must correlate api-gateway deploy timing (33m ago) with CDN miss rate spike onset (30m ago)
+        # No cache-busting or Cache-Control mentioned in logs — only business-layer symptoms
         "id": "medium_3",
-        "task_description": "CDN alerts firing but origin services look healthy. What is wrong?",
+        "task_description": "CDN costs have spiked 9x and users are reporting slow page loads. Origin servers are overloaded. Nothing looks broken. Find what changed.",
         "alerts": [
-            {"service": "cdn-edge", "metric": "cache_hit_rate", "value": "2%", "threshold": "85%", "firing_for": "30m"},
-            {"service": "cdn-edge", "metric": "origin_fetch_rate", "value": "98%", "threshold": "15%", "firing_for": "30m"},
-            {"service": "api-gateway", "metric": "request_rate", "value": "8500rps", "threshold": "2000rps", "firing_for": "28m"},
+            {"service": "cdn-edge", "metric": "cache_hit_rate", "value": "4%", "threshold": "85%", "firing_for": "30m"},
+            {"service": "cdn-edge", "metric": "egress_cost_usd_per_hour", "value": "340", "threshold": "38", "firing_for": "30m"},
+            {"service": "content-service", "metric": "request_rate", "value": "14200rps", "threshold": "1800rps", "firing_for": "29m"},
+            {"service": "api-gateway", "metric": "cpu_utilization", "value": "88%", "threshold": "60%", "firing_for": "27m"},
         ],
         "log_snippets": [
-            "[cdn-edge] WARN: Cache-Control: no-store header detected on all /api/v2/* responses",
-            "[api-gateway] INFO: Response headers modified — cache-busting middleware active",
-            "[cdn-edge] INFO: Purging cache due to upstream Cache-Control directives",
-            "[api-gateway] WARN: Downstream load 4x normal — CDN not absorbing traffic",
+            "[cdn-edge] WARN: Cache hit ratio dropped from 87% to 4% — all traffic now hitting origin",
+            "[content-service] WARN: Request rate 7.9x above baseline — origin serving traffic that CDN should absorb",
+            "[cdn-edge] INFO: No CDN configuration changes detected — TTL rules and routing policies unchanged",
+            "[api-gateway] WARN: Sustained high CPU — processing 7x normal inbound request volume since 14:28 UTC",
+            "[cdn-edge] WARN: Cache miss spike onset at 14:29 UTC — correlates with upstream response characteristic change",
         ],
         "dependency_graph": {
-            "cdn-edge": ["api-gateway"],
-            "api-gateway": ["static-assets-service", "auth-service", "content-service"],
+            "cdn-edge": ["api-gateway", "static-assets-service"],
+            "api-gateway": ["auth-service", "content-service", "static-assets-service"],
+            "auth-service": ["postgres-primary"],
+            "content-service": ["postgres-replica"],
         },
         "recent_deployments": [
-            {"service": "api-gateway", "version": "v5.0.2", "deployed_at": "35 minutes ago", "note": "Added cache-busting middleware for GDPR compliance"},
+            {"service": "cdn-edge", "version": "config-v3.8", "deployed_at": "2 hours ago", "note": "Updated geo-routing rules — traffic now balanced across 3 PoPs instead of 2"},
+            {"service": "auth-service", "version": "v4.1.0", "deployed_at": "55 minutes ago", "note": "Stricter token validation — rejects tokens missing aud claim"},
+            {"service": "api-gateway", "version": "v5.0.2", "deployed_at": "33 minutes ago", "note": "Response pipeline configuration update"},
         ],
         "ground_truth": {
             "root_cause": "api-gateway",

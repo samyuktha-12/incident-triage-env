@@ -110,11 +110,23 @@ openenv validate --verbose
 
 ## Baseline Performance
 
-Measured over 2 complete runs with `meta-llama/Llama-3.3-70B-Instruct` at temperature 0
-via `https://router.huggingface.co/v1`. Results are deterministic (temperature=0).
+Measured with `meta-llama/Llama-3.3-70B-Instruct` at temperature 0
+via `https://router.huggingface.co/v1`. Rewards are clamped to (0.01, 0.99).
 
-| Task | Avg Reward | Notes |
+| Task | Per-scenario rewards | Avg Reward |
 |---|---|---|
-| easy | 0.95 | Perfect on root cause and remediation; easy_2 loses 0.15 on severity off-by-one and generic summary |
-| medium | 0.82 | medium_2 misidentifies postgres-primary vs postgres-replica (wrong root cause, partial credit only) |
-| hard | 1.00 | Correctly traces cascading DB lock, silent ETL deadlock, and tenant-specific license failure |
+| easy | 0.99, 0.85, 0.99 | **0.94** |
+| medium | 0.70, 0.15, 0.90 | **0.58** |
+| hard | 0.25, 0.55, 0.25 | **0.35** |
+
+**Per-scenario notes:**
+
+- `easy_2` (0.85): root cause and remediation correct; severity off-by-one (model answered P1, expected P2)
+- `medium_1` (0.70): root cause correct (`redis-cache`); chose `scale_out` instead of `restart_service` — misled by red herring deployment on user-service suggesting capacity pressure
+- `medium_2` (0.15): blamed `payments-service` with `rollback_deployment` — the payments-gateway red herring (idempotency key change) worked; model failed to infer read-replica divergence from write-then-read inconsistency patterns alone
+- `medium_3` (0.90): correct root cause and remediation; severity off-by-one (P1 vs P2) — timing correlation worked but model over-escalated severity
+- `hard_1` (0.25): blamed `postgres-primary` — could not trace 2 hops through to `feature-flag-service`
+- `hard_2` (0.55): identified `postgres-warehouse` as bottleneck but stopped one hop short of `etl-pipeline` as the lock holder
+- `hard_3` (0.25): blamed `entitlement-checker` — fell for the red herring deployment, did not trace upstream to `license-server`
+
+**Difficulty curve is intentional:** easy scenarios have clear single-service signals; medium scenarios require tracing shared dependencies with misleading deployments; hard scenarios require 2-3 hops of dependency chain reasoning with no direct root cause signals in the logs.
