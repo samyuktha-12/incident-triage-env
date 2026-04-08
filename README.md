@@ -51,14 +51,17 @@ teams building and evaluating ops agents.
 | dependency_graph | Dict | Service → list of downstream dependencies |
 | recent_deployments | List[Dict] | Deployments in last 2 hours with version and notes |
 | task_description | str | Natural language goal for this episode |
-| reward | float | Reward from last action, strictly in (0, 1) |
+| reward | float | Reward from last action, clamped to open interval (0.01, 0.99) |
 | done | bool | Whether all scenarios in this episode are complete |
 | feedback | str | Per-component score breakdown of last action |
 
 ## Reward Function
 
 Reward is shaped across four components per incident — not binary 
-end-of-episode. All rewards are strictly within (0, 1).
+end-of-episode. Raw component scores are clamped to the open interval 
+**(0.01, 0.99)** at three independent layers: the grader, the 
+observation constructor, and the Pydantic model validator. Rewards of 
+exactly 0.0 or 1.0 are never emitted.
 
 | Component | Max | Partial Credit |
 |---|---|---|
@@ -73,9 +76,10 @@ Graders are fully deterministic — same action always returns same score.
 
 | Task | Difficulty | Scenarios | Avg Agent Score |
 |---|---|---|---|
-| easy | Easy | 3 | ~0.98 |
-| medium | Medium | 3 | ~0.47 |
+| easy | Easy | 3 | ~0.97 |
+| medium | Medium | 3 | ~0.43 |
 | hard | Hard | 3 | ~0.35 |
+| chaos | Expert | 3 | ~0.61 |
 
 ### Task Design
 
@@ -91,7 +95,7 @@ downstream symptoms, never root cause directly. Multiple red
 herring deployments. Agent must reason across 5+ services to 
 identify the origin.
 
-### Hard Task Design Note
+### Hard & Chaos Task Design Note
 
 Hard scenarios are specifically designed to challenge frontier 
 models. Logs never name the root cause service directly — only 
@@ -99,6 +103,11 @@ downstream symptoms are visible. The LLM must correlate alert
 timing, deployment history, and dependency graph structure to 
 reach the correct conclusion. Llama-3.3-70B scores ~0.35 average 
 on hard tasks.
+
+Chaos scenarios add simultaneous multi-root-cause storms: two 
+independent failures fire at once and the agent must identify 
+the one with highest revenue impact. These are the hardest 
+scenarios in the benchmark.
 
 ## Setup & Usage
 
@@ -147,9 +156,10 @@ Tested with Llama-3.3-70B-Instruct at temperature 0:
 
 | Task | Rewards | Avg | Notes |
 |---|---|---|---|
-| easy | 0.99, 0.95, 0.99 | 0.98 | Strong — direct evidence available |
-| medium | 0.70, 0.25, 0.45 | 0.47 | Cascading failures and red herrings confuse model |
+| easy | 0.98, 0.95, 0.98 | 0.97 | Strong — direct evidence available. Max clamped to 0.98. |
+| medium | 0.70, 0.15, 0.45 | 0.43 | Cascading failures and red herrings confuse model |
 | hard | 0.25, 0.55, 0.25 | 0.35 | Indirect signals only — frontier model struggles |
+| chaos | 0.25, 0.98, 0.60 | 0.61 | Multi-root-cause storms — model succeeds when failure is OOM-dominant, struggles with priority triage |
 
 ## Why This Environment Matters
 
