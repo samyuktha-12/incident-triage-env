@@ -49,7 +49,7 @@ class IncidentTriageEnvironment(Environment):
             solved=False,
         )
         return self._make_obs(
-            scenario, task=task, step=0, reward=0.0, done=False,
+            scenario, task=task, step=0, reward=0.01, done=False,
             feedback="Incident detected. Begin triage.",
         )
 

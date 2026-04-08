@@ -48,7 +48,7 @@ EASY_SCENARIOS = [
         ],
         "ground_truth": {
             "root_cause": "recommendation-service",
-            "severity": "P2",
+            "severity": "P1",
             "remediation": "rollback_deployment",
         },
     },
