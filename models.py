@@ -40,7 +40,7 @@ class IncidentObservation(BaseModel):
     @field_validator('reward')
     @classmethod
     def reward_must_be_open_interval(cls, v):
-        return round(max(0.01, min(0.99, float(v))), 2)
+        return round(max(0.01, min(0.98, float(v))), 2)
 
 
 class IncidentState(_OpenEnvState):
