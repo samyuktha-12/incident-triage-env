@@ -148,15 +148,16 @@ def run_task(task_name: str):
                     "scenario_id": obs.get("scenario_id", ""),
                 })
                 obs         = result.get("observation", result)
-                reward      = float(result["reward"] if result.get("reward") is not None else obs.get("reward", 0.0))
+                reward      = float(result["reward"] if result.get("reward") is not None else obs.get("reward", 0.01))
                 done        = bool(result.get("done", obs.get("done", False)))
                 error_msg   = "null"
             except Exception as e:
-                reward    = 0.0
+                reward    = 0.01
                 done      = True
                 error_msg = str(e).replace("\n", " ")[:200]
                 action_str = "error"
 
+            reward = max(0.01, min(0.99, float(reward)))
             rewards.append(reward)
             print(
                 f"[STEP] step={step_n} action={action_str} "
@@ -166,14 +167,14 @@ def run_task(task_name: str):
 
     except Exception as e:
         error_msg = str(e).replace("\n", " ")[:200]
-        rewards   = [0.0]
+        rewards   = [0.01]
         step_n    = max(step_n, 1)
         print(
-            f"[STEP] step={step_n} action=null reward=0.00 done=true error={error_msg}",
+            f"[STEP] step={step_n} action=null reward=0.01 done=true error={error_msg}",
             flush=True,
         )
 
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.01"
     success     = any(r >= 0.5 for r in rewards)
     print(
         f"[END] success={str(success).lower()} steps={step_n} rewards={rewards_str}",
@@ -186,6 +187,6 @@ if __name__ == "__main__":
         try:
             run_task(task)
         except Exception as e:
-            print(f"[END] success=false steps=0 rewards=0.00", flush=True)
+            print(f"[END] success=false steps=0 rewards=0.01", flush=True)
             print(f"FATAL: {e}", file=sys.stderr)
         time.sleep(1)
