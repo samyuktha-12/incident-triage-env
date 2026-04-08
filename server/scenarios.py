@@ -166,34 +166,38 @@ MEDIUM_SCENARIOS = [
 
 HARD_SCENARIOS = [
     {
+        # Root cause: feature-flag-service (2 hops: api-gateway → auth-service → feature-flag-service)
+        # Red herring: auth-service deployed 18m ago, looks like the culprit
+        # Logs: all victim symptoms — no mention of feature-flag-service
         "id": "hard_1",
         "task_description": "Full production outage. Multiple teams paging. You have 5 minutes. Find root cause and act.",
         "alerts": [
-            {"service": "api-gateway", "metric": "error_rate", "value": "92%", "threshold": "1%", "firing_for": "4m"},
-            {"service": "auth-service", "metric": "error_rate", "value": "88%", "threshold": "1%", "firing_for": "4m"},
-            {"service": "payments-service", "metric": "error_rate", "value": "91%", "threshold": "1%", "firing_for": "4m"},
-            {"service": "notification-service", "metric": "error_rate", "value": "85%", "threshold": "1%", "firing_for": "3m"},
-            {"service": "postgres-primary", "metric": "active_queries", "value": "980", "threshold": "100", "firing_for": "5m"},
-            {"service": "feature-flag-service", "metric": "latency_p99", "value": "45000ms", "threshold": "100ms", "firing_for": "6m"},
+            {"service": "api-gateway", "metric": "error_rate", "value": "89%", "threshold": "1%", "firing_for": "5m"},
+            {"service": "auth-service", "metric": "latency_p99", "value": "43000ms", "threshold": "300ms", "firing_for": "5m"},
+            {"service": "payments-service", "metric": "error_rate", "value": "87%", "threshold": "1%", "firing_for": "5m"},
+            {"service": "notification-service", "metric": "error_rate", "value": "81%", "threshold": "1%", "firing_for": "4m"},
+            {"service": "user-service", "metric": "latency_p99", "value": "41000ms", "threshold": "300ms", "firing_for": "4m"},
+            {"service": "postgres-primary", "metric": "active_queries", "value": "940", "threshold": "100", "firing_for": "6m"},
         ],
         "log_snippets": [
-            "[feature-flag-service] WARN: Flag evaluation taking 44s — remote config fetch timeout",
-            "[feature-flag-service] INFO: Synchronous flag fetch on every request (cache disabled by config)",
-            "[auth-service] ERROR: Timeout waiting for feature flag 'new-auth-flow': 44000ms",
-            "[payments-service] ERROR: Blocking on feature-flag-service for 'dynamic-pricing-v2'",
-            "[postgres-primary] ERROR: Lock wait timeout — 400 queries waiting on feature_flags table",
-            "[api-gateway] WARN: All upstreams reporting >30s latency, circuit breaker not configured",
+            "[auth-service] ERROR: Upstream call did not respond within 44s deadline — request aborted",
+            "[payments-service] ERROR: Synchronous dependency exceeded 43s timeout — propagating failure to caller",
+            "[postgres-primary] ERROR: Lock wait timeout — 370 queries blocked behind a long-running transaction",
+            "[notification-service] WARN: Internal dependency unresponsive for 40s, request abandoned",
+            "[user-service] WARN: Response time from shared dependency exceeds SLA — serving degraded",
+            "[api-gateway] WARN: All upstreams reporting >30s latency, no circuit breaker active",
         ],
         "dependency_graph": {
-            "api-gateway": ["auth-service", "payments-service", "notification-service"],
+            "api-gateway": ["auth-service", "payments-service", "notification-service", "user-service"],
             "auth-service": ["feature-flag-service", "postgres-primary"],
             "payments-service": ["feature-flag-service", "postgres-primary"],
-            "notification-service": ["feature-flag-service"],
+            "notification-service": ["feature-flag-service", "user-service"],
+            "user-service": ["postgres-replica", "feature-flag-service"],
             "feature-flag-service": ["postgres-primary", "remote-config-api"],
         },
         "recent_deployments": [
-            {"service": "feature-flag-service", "version": "v1.2.0", "deployed_at": "7 minutes ago", "note": "Disabled local cache to force real-time flag evaluation"},
-            {"service": "auth-service", "version": "v8.1.0", "deployed_at": "2 hours ago", "note": "New auth flow behind feature flag"},
+            {"service": "auth-service", "version": "v8.2.0", "deployed_at": "18 minutes ago", "note": "Added per-request session validation to enforce new compliance policy"},
+            {"service": "feature-flag-service", "version": "v1.2.0", "deployed_at": "8 minutes ago", "note": "Configuration parameter change"},
         ],
         "ground_truth": {
             "root_cause": "feature-flag-service",
@@ -202,26 +206,36 @@ HARD_SCENARIOS = [
         },
     },
     {
+        # Root cause: etl-pipeline (2 hops: analytics-dashboard → analytics-api → postgres-warehouse ← etl-pipeline)
+        # Red herring: kafka-consumer deployed 4h ago, consumer lag looks causal
+        # Logs: warehouse lock, stale reads, kafka lag — etl-pipeline never named
         "id": "hard_2",
         "task_description": "Data pipeline is failing silently. End users see stale data. No obvious error alerts.",
         "alerts": [
-            {"service": "analytics-dashboard", "metric": "data_freshness_minutes", "value": "187", "threshold": "15", "firing_for": "3h"},
-            {"service": "etl-pipeline", "metric": "job_duration_minutes", "value": "180", "threshold": "45", "firing_for": "3h"},
+            {"service": "analytics-dashboard", "metric": "data_freshness_minutes", "value": "231", "threshold": "15", "firing_for": "3h 51m"},
+            {"service": "reporting-service", "metric": "stale_data_rate", "value": "94%", "threshold": "5%", "firing_for": "3h 40m"},
+            {"service": "analytics-api", "metric": "query_duration_p99", "value": "9200ms", "threshold": "500ms", "firing_for": "3h 30m"},
+            {"service": "postgres-warehouse", "metric": "long_running_transactions", "value": "3", "threshold": "0", "firing_for": "3h 50m"},
         ],
         "log_snippets": [
-            "[etl-pipeline] INFO: Processing batch_id=20260408_0300 (started 3h ago, still running)",
-            "[etl-pipeline] INFO: Waiting on lock for table 'events_raw' — held by batch_id=20260407_2100",
-            "[etl-pipeline] WARN: Previous batch 20260407_2100 marked complete but lock not released",
-            "[postgres-warehouse] INFO: Long-running transaction (pid=4821) holds lock on events_raw: 3h 12m",
-            "[etl-pipeline] INFO: No error thrown — pipeline believes upstream batch succeeded",
+            "[postgres-warehouse] WARN: Write lock on table 'events_raw' held for 3h 51m by pid=7823 — all writers blocked",
+            "[analytics-api] WARN: Query returning stale snapshot — events_processed last updated 4 hours ago",
+            "[kafka-consumer] INFO: Consumer lag growing on topic 'raw_events' — 2.4M messages pending, no writer draining",
+            "[reporting-service] WARN: Scheduled report refresh blocked — upstream data has not advanced in 3h 47m",
+            "[data-validator] WARN: Write lock acquisition failed on events_raw — queued behind pid=7823, retrying",
+            "[postgres-warehouse] INFO: Transaction pid=7823 open since 03:12 UTC — no commit or rollback issued",
         ],
         "dependency_graph": {
-            "analytics-dashboard": ["analytics-api"],
+            "analytics-dashboard": ["analytics-api", "reporting-service"],
             "analytics-api": ["postgres-warehouse"],
-            "etl-pipeline": ["postgres-warehouse", "kafka-consumer"],
+            "reporting-service": ["analytics-api"],
+            "etl-pipeline": ["postgres-warehouse", "kafka-consumer", "data-validator"],
+            "data-validator": ["postgres-warehouse"],
             "kafka-consumer": ["kafka-cluster"],
         },
-        "recent_deployments": [],
+        "recent_deployments": [
+            {"service": "kafka-consumer", "version": "v2.1.0", "deployed_at": "4 hours ago", "note": "Increased partition thread count to reduce consumer lag under peak load"},
+        ],
         "ground_truth": {
             "root_cause": "etl-pipeline",
             "severity": "P2",
@@ -229,25 +243,35 @@ HARD_SCENARIOS = [
         },
     },
     {
+        # Root cause: license-server (3 hops: load-balancer → payments-service-v2 → entitlement-checker → license-server)
+        # Red herring: entitlement-checker deployed 3h ago with fail-fast timeouts, looks responsible
+        # Logs: 503s on v2 pod group, entitlement timeouts, upstream 429 — license-server never named
         "id": "hard_3",
         "task_description": "Sporadic 503s hitting 0.1% of users — but all affected users are VIP enterprise accounts.",
         "alerts": [
-            {"service": "load-balancer", "metric": "backend_503_rate", "value": "0.1%", "threshold": "0.01%", "firing_for": "45m"},
+            {"service": "api-gateway", "metric": "error_rate_enterprise_tier", "value": "8.3%", "threshold": "0.1%", "firing_for": "52m"},
+            {"service": "load-balancer", "metric": "backend_503_rate", "value": "0.1%", "threshold": "0.01%", "firing_for": "52m"},
+            {"service": "payments-service-v2", "metric": "request_timeout_rate", "value": "11%", "threshold": "0.5%", "firing_for": "50m"},
+            {"service": "entitlement-checker", "metric": "latency_p99", "value": "27500ms", "threshold": "200ms", "firing_for": "55m"},
         ],
         "log_snippets": [
-            "[load-balancer] WARN: Backend pod payments-service-v2-7d9f returning 503 for tenant_id in [5001..5200]",
-            "[payments-service] INFO: Tenant routing: enterprise tenants (id>5000) routed to v2 pod group",
-            "[payments-service-v2] ERROR: License validation failed: license server unreachable",
-            "[license-server] WARN: Rate limited by upstream vendor API: 429 Too Many Requests",
-            "[payments-service-v2] ERROR: Feature 'enterprise-sla' gated behind license check — failing closed",
+            "[payments-service-v2] ERROR: Entitlement check timed out after 27s for tenant_id=5142 — request rejected",
+            "[entitlement-checker] ERROR: Retry 5/5 exhausted — upstream returning 429, exponential backoff triggered",
+            "[load-balancer] WARN: Backend pod group returning 503 for requests in tenant_id range [5001..5200]",
+            "[payments-service-v2] INFO: Enterprise capability gated on entitlement check — failing closed per policy",
+            "[api-gateway] WARN: Error rate elevated only on /v2/payments enterprise routing path",
+            "[entitlement-checker] WARN: Downstream dependency rate-limiting all outbound calls — quota exceeded",
         ],
         "dependency_graph": {
+            "api-gateway": ["load-balancer"],
             "load-balancer": ["payments-service-v1", "payments-service-v2"],
-            "payments-service-v2": ["license-server", "postgres-primary"],
+            "payments-service-v2": ["entitlement-checker", "postgres-primary", "redis-cache"],
+            "payments-service-v1": ["postgres-primary"],
+            "entitlement-checker": ["license-server", "feature-store"],
             "license-server": ["vendor-license-api"],
         },
         "recent_deployments": [
-            {"service": "payments-service-v2", "version": "v4.0.0", "deployed_at": "2 days ago", "note": "Enterprise tier with license-gated features"},
+            {"service": "entitlement-checker", "version": "v2.3.0", "deployed_at": "3 hours ago", "note": "Reduced upstream timeout from 60s to 5s — faster failure detection"},
         ],
         "ground_truth": {
             "root_cause": "license-server",
