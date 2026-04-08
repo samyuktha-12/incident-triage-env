@@ -10,6 +10,9 @@ tags:
   - real-world
   - sre
   - incident-management
+  - reinforcement-learning
+  - agent-evaluation
+  - devops
 ---
 
 # Incident Triage Environment
@@ -172,3 +175,16 @@ unsolved problem in the RL/agent space.
 This environment provides the first structured benchmark for 
 evaluating agent performance on production incident triage, 
 with clear difficulty progression and deterministic grading.
+
+## Real-World Impact
+
+Environments like this directly address the $700B+ annual cost of 
+unplanned IT downtime (Gartner, 2023). An agent trained on this 
+benchmark could assist on-call engineers in:
+
+- Reducing mean time to resolution (MTTR) from minutes to seconds
+- Handling alert storms during high-traffic events
+- Onboarding junior engineers by explaining incident patterns
+
+This is not a toy problem — it mirrors production runbooks used 
+at companies like Google, Meta, and Netflix.
