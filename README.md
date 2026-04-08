@@ -77,7 +77,7 @@ Graders are fully deterministic — same action always returns same score.
 | Task | Difficulty | Scenarios | Avg Agent Score |
 |---|---|---|---|
 | easy | Easy | 3 | ~0.97 |
-| medium | Medium | 3 | ~0.43 |
+| medium | Medium | 3 | ~0.58 |
 | hard | Hard | 3 | ~0.35 |
 | chaos | Expert | 3 | ~0.61 |
 
@@ -156,8 +156,8 @@ Tested with Llama-3.3-70B-Instruct at temperature 0:
 
 | Task | Rewards | Avg | Notes |
 |---|---|---|---|
-| easy | 0.98, 0.95, 0.98 | 0.97 | Strong — direct evidence available. Max clamped to 0.98. |
-| medium | 0.70, 0.15, 0.45 | 0.43 | Cascading failures and red herrings confuse model |
+| easy | 0.98, 0.95, 0.98 | 0.97 | Strong — direct evidence available |
+| medium | 0.70, 0.15, 0.90 | 0.58 | Cascading failures and red herrings confuse model |
 | hard | 0.25, 0.55, 0.25 | 0.35 | Indirect signals only — frontier model struggles |
 | chaos | 0.25, 0.98, 0.60 | 0.61 | Multi-root-cause storms — model succeeds when failure is OOM-dominant, struggles with priority triage |
 
