@@ -142,6 +142,7 @@ class IncidentTriageEnvironment(Environment):
         else:
             parts.append("summary missing or invalid (+0.0)")
 
+        score = max(0.01, min(0.99, score))
         feedback = f"Score: {score:.2f} | " + " | ".join(parts)
         return round(score, 2), feedback
 
